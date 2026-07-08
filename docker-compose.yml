@@ -1,0 +1,74 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dit-postgres
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./database/data.sql:/docker-entrypoint-initdb.d/02_data.sql
+      - ./database/functions.sql:/docker-entrypoint-initdb.d/03_functions.sql
+      - ./database/triggers.sql:/docker-entrypoint-initdb.d/04_triggers.sql
+      - ./database/views.sql:/docker-entrypoint-initdb.d/05_views.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - dit-network
+
+  book-service:
+    build: ./book-service
+    container_name: dit-book-service
+    restart: unless-stopped
+    env_file: ./book-service/.env
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dit-network
+
+  user-service:
+    build: ./user-service
+    container_name: dit-user-service
+    restart: unless-stopped
+    env_file: ./user-service/.env
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dit-network
+
+  borrow-service:
+    build: ./borrow-service
+    container_name: dit-borrow-service
+    restart: unless-stopped
+    env_file: ./borrow-service/.env
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      book-service:
+        condition: service_started
+      user-service:
+        condition: service_started
+    networks:
+      - dit-network
+
+networks:
+  dit-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
